@@ -29,7 +29,24 @@ func getBsonName(t reflect.StructField) string {
 	return t.Name
 }
 
-func getValue(v reflect.Value, field string, omitempty bool, level int) interface{} {
+func getValue(v reflect.Value, field string, omitempty bool, t reflect.StructField, level int) interface{} {
+
+	if t.Type.Name() == "ObjectID" {
+		if omitempty && v.Len() == 0 {
+			return nil
+		}
+		for i := v.Len() - 1; i >= 0; i-- {
+			oidVal := v.Index(i).Uint()
+			if oidVal != 0 {
+				return v.Interface()
+			}
+			if oidVal == 0 && i == 0 {
+				return nil
+			}
+		}
+		return v
+	}
+
 	switch v.Kind() {
 	case reflect.Slice, reflect.Array:
 		var array []interface{}
@@ -64,13 +81,18 @@ func cleaner(obj interface{}, field string, level int) interface{} {
 	val, typ := reflect.ValueOf(obj), reflect.TypeOf(obj)
 	returnValue := make(map[string]interface{})
 
+	if val.Kind() != reflect.Struct {
+		return obj
+	}
+
 	for i := 0; i < val.NumField(); i++ {
 		v, t := val.Field(i), typ.Field(i)
 		tags := strings.Split(t.Tag.Get(structTag), ",")
 
 		if contains(tags, field) {
 			key := getBsonName(t)
-			value := getValue(v, field, contains(tags, "omitempty"), level)
+			omitempty := contains(tags, "omitempty")
+			value := getValue(v, field, omitempty, t, level)
 
 			if value != nil {
 				returnValue[key] = value
